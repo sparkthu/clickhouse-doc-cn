@@ -22,49 +22,46 @@ ClickHouse是一个列式的OLAP数据库管理系统
 
 这些例子仅仅是用来展示数据是怎样排布的。
 不同列的数据时分开存储的，而同一列的数据存储在一起。典型的列式数据库有： Vertica, Paraccel (Actian Matrix) (Amazon Redshift), Sybase IQ, Exasol, Infobright, InfiniDB, MonetDB (VectorWise) (Actian Vector), LucidDB, SAP HANA, Google Dremel, Google PowerDrill, Druid, kdb+ 等。
-Different orders for storing data are better suited to different scenarios.
-The data access scenario refers to what queries are made, how often, and in what proportion; how much data is read for each type of query - rows, columns, and bytes; the relationship between reading and updating data; the working size of the data and how locally it is used; whether transactions are used, and how isolated they are; requirements for data replication and logical integrity; requirements for latency and throughput for each type of query, and so on.
+不同的存储方式会适应不同的场景。数据获取的场景是指请求如何发出，频率如何，比例如何。每种请求有多少数据被读出，包括按行，按列，按字节数；读取和更新数据之间的关系如何，活跃的数据有多大以及本地性如何；是否使用了事务，以及是否独立；对于数据持久性的要求如何，每种请求的延迟和吞吐量的要求如何等等。
 
-The higher the load on the system, the more important it is to customize the system to the scenario, and the more specific this customization becomes. There is no system that is equally well-suited to significantly different scenarios. If a system is adaptable to a wide set of scenarios, under a high load, the system will handle all the scenarios equally poorly, or will work well for just one of the scenarios.
+整个系统的负载越高，针对场景定制化系统就越重要，定制化程度也越高。没有任何系统是能够很好的使用完全不同的各种场景的。如果一个系统适应很宽泛的场景需求，在负载很高的情况下，要么对每种场景的处理都很差，要么只在其中一种场景下工作的很好。
 
-We'll say that the following is true for the OLAP (online analytical processing) scenario:
+在OLAP(Online Analytical Processing)的场景下，具备以下特征：
 
-- The vast majority of requests are for read access.
-- Data is updated in fairly large batches (> 1000 rows), not by single rows; or it is not updated at all.
-- Data is added to the DB but is not modified.
-- For reads, quite a large number of rows are extracted from the DB, but only a small subset of columns.
-- Tables are "wide," meaning they contain a large number of columns.
-- Queries are relatively rare (usually hundreds of queries per server or less per second).
-- For simple queries, latencies around 50 ms are allowed.
-- Column values are fairly small -  numbers and short strings (for example, 60 bytes per URL).
-- Requires high throughput when processing a single query (up to billions of rows per second per server).
-- There are no transactions.
-- Low requirements for data consistency.
-- There is one large table per query. All tables are small, except for one.
-- A query result is significantly smaller than the source data. That is, data is filtered or aggregated. The result fits in a single server's RAM.
+- 绝大多数请求是读请求。
+- 数据是批量更新的（每次1000行以上），而不是单条更新，或者从来不更新。
+- 数据不会被修改。
+- 读的时候，一次会读很多行，不过仅包括少量的列。
+- 表很宽，也就是说有大量的列
+- 请求频率相对不高（每台机器每秒小于几百个请求）
+- 对一般的请求，50ms左右的延迟是允许的。
+- 单列的数据很小，通常是数字或短字符串（比如60字节的URL信息）
+- 处理单个请求的时候需要很大的吞吐量（每台机器每秒上十亿行）
+- 没有事务要求
+- 对数据一致性要求低
+- 对每个请求来讲有一个表特别大，其他涉及的表都很小。
+- 查询的结果比原始数据小得多，也就是说数据被过滤或聚合了。结果的数据量能够放入单台机器的内存中。
 
-It is easy to see that the OLAP scenario is very different from other popular scenarios (such as OLTP or Key-Value access). So it doesn't make sense to try to use OLTP or a Key-Value DB for processing analytical queries if you want to get decent performance. For example, if you try to use MongoDB or Elliptics for analytics, you will get very poor performance compared to OLAP databases.
+很容易看出来OLAP的场景和其他的流行的场景有很大不同（比如OLTP或KV读取的场景），因此完全没有必要去尝试使用OLTP数据库或KV数据库来处理分析类的请求。例如不要使用MongoDB或Elliptics做数据分析，相比于使用OLAP数据库性能会很差。
 
-Columnar-oriented databases are better suited to OLAP scenarios (at least 100 times better in processing speed for most queries), for the following reasons:
+列式数据库会更适应OLAP的场景（至少1000倍的性能优势），有以下两个原因：
 
-1. For I/O.
-    -  For an analytical query, only a small number of table columns need to be read. In a column-oriented database, you can read just the data you need. For example, if you need 5 columns out of 100, you can expect a 20-fold reduction in I/O.
-    - Since data is read in packets, it is easier to compress. Data in columns is also easier to compress. This further reduces the I/O volume.
-    - Due to the reduced I/O, more data fits in the system cache.
+1. 从IO来讲：
+    - 对于分析类的请求，每一行只有少量的几列需要读。对于列式数据库，你可以只读取你需要的数据，比如100列中你只需要5列，你就节省了20倍的IO。
+    - 因为数据是按包读取的，更容易压缩，列式数据库能得到更好的压缩效果。
+    - 因为IO数据量减少，系统的缓存能够缓存更多的数据。
+  
+  例如，“统计每个广告平台的记录的数量”这个请求需要读取“广告平台ID“这个列，未压缩时占用了1个字节。如果大部分的流量不是来自广告平台，你可以期待获得十倍的压缩。当使用一个快速的压缩算法时，每秒压缩几个G的数据是可能的。也就是说单台机器可以每秒处理数十亿行数据。而这个速度也实际达到了。
+2. 从CPU来讲：（这部分没看懂）
+  因为执行一条请求需要处理大量的行，将整个操作的vectors而不是单独的行进行分发会更合理，或者实现一个请求引擎来避免分发的开销。如果不这样，对于任何half-decent disk subsystem，请求解释器将会占满CPU。Since executing a query requires processing a large number of rows, it helps to dispatch all operations for entire vectors instead of for separate rows, or to implement the query engine so that there is almost no dispatching cost. If you don't do this, with any half-decent disk subsystem, the query interpreter inevitably stalls the CPU.
+  
+  因此将数据按列存储，并在可能的时候按列处理是很重要的。
+  
+  有两种方法可以做到这一点：
+  
+  1. 一个vector engine. 所有的操作为向量操作而写的，而不是单独的数据。这意味着你不需要经常调用操作，分发的开销就可以忽略不计。操作的代码包括了优化过的内部循环。A vector engine. All operations are written for vectors, instead of for separate values. This means you don't need to call operations very often, and dispatching costs are negligible. Operation code contains an optimized internal cycle.
+  2. 代码生成。为请求而生成的代码包括了简介的操作。Code generation. The code generated for the query has all the indirect calls in it.
 
- For example, the query "count the number of records for each advertising platform" requires reading one "advertising platform ID" column, which takes up 1 byte uncompressed. If most of the traffic was not from advertising platforms, you can expect at least 10-fold compression of this column. When using a quick compression algorithm, data decompression is possible at a speed of at least several gigabytes of uncompressed data per second. In other words, this query can be processed at a speed of approximately several billion rows per second on a single server. This speed is actually achieved in practice.
-Show example
-
-2. For CPU.
-
-Since executing a query requires processing a large number of rows, it helps to dispatch all operations for entire vectors instead of for separate rows, or to implement the query engine so that there is almost no dispatching cost. If you don't do this, with any half-decent disk subsystem, the query interpreter inevitably stalls the CPU.
-It makes sense to both store data in columns and process it, when possible, by columns.
-
-There are two ways to do this:
-
-1. A vector engine. All operations are written for vectors, instead of for separate values. This means you don't need to call operations very often, and dispatching costs are negligible. Operation code contains an optimized internal cycle.
-2. Code generation. The code generated for the query has all the indirect calls in it.
-
-This is not done in "normal" databases, because it doesn't make sense when running simple queries. However, there are exceptions. For example, MemSQL uses code generation to reduce latency when processing SQL queries. (For comparison, analytical DBMSs require optimization of throughput, not latency.)
-
-Note that for CPU efficiency, the query language must be declarative (SQL or MDX), or at least a vector (J, K). The query should only contain implicit loops, allowing for optimization.
+  在不同的数据库中并没有实现这些方法，因为对于简单的请求没有太大意义。然而也有例外，MemSQL使用了代码生成来降低处理SQL请求时的延迟。（相反，对于分析类的数据库更需要优化吞吐量而不是延迟）
+  
+  注意一点，为了提高CPU的效率，查询语句必须是声明式的（SQL或MDX），或至少是向量式的，请求中应该只包含隐式循环，方便优化。
