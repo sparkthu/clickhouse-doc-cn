@@ -1,10 +1,10 @@
-\##ClickHouse 引擎
+## ClickHouse 引擎
 
 Clickhouse 提供了丰富的存储引擎，存储引擎的类型决定了数据如何存放、如何做备份、如何被检索、是否使用索引。不同的存储引擎在数据写入/检索方面做平衡，以满足不同业务需求。
 
 Clickhouse 提供了十多种引擎，主要是用的是`MergeTree`  系表引擎。
 
-\###TinyLog
+### TinyLog
 
 这是最简单的表引擎，它将数据存储在磁盘上。每列都存储在一个单独的压缩文件中。写入时，数据被附加到文件的末尾。该类型引擎不支持索引 这种引擎没有并发数据访问控制：
 
@@ -36,7 +36,7 @@ a.bin 和 b.bin 是压缩过的对应的列的数据， sizes.json 中记录了�
 {"yandex":{"id%2Ebin":{"size":"28"},"name%2Ebin":{"size":"32"}}}
 ```
 
-\###Log
+### Log
 
 Log引擎跟TinyLog引擎的区别是增加一个小的标记文件（*marks.mrk )* 留在列文件中。这些文件记录了每个数据块的偏移量。这种做的一个用处就是可以准确的切分读的范围，从而使并发读成为可能。但是，它是不能支持并发写的，一个写操作会阻塞其他读操作。 Log引擎不支持索引，同时因为有一个_marks.mrk 冗余数据，所以在写入数据时，一旦出现问题，这个表就报废了。同TinyLog差不多Log引擎使用的场景也是那种一次下入后面都是读取的场景，比如测试环境或者演示场景。
 
@@ -60,7 +60,7 @@ insert into test.Log_test (id, name) values ('5', 'r');
 └── sizes.json
 ```
 
-\###Memory
+### Memory
 
 Memory引擎 数据以未压缩的形式存储在RAM中。数据的存储方式与读取时的接收的格式完全相同。（在很多情况下，MergeTree引擎的性能几乎一样高）锁是短暂的：读写操作不会彼此阻塞。不支持索引。支持并发访问数据库。 简单的查询最快（超过10GB/s）服务器重启数据就会消失。 一般用到它的地方不多，除了用来测试，就是在需要非常高的性能，同时数据量又不太大（上限大概 1 亿行）的场景。 内存引擎由系统用于具有外部查询数据的临时表 ###Merge
 
@@ -516,7 +516,7 @@ Replication 是异步和多主机的。INSERT操作（以及ALTER）可以发送
 
 系统监控副本上的数据同步性，并能够在发生故障后进行恢复。故障转移是自动的（对于数据中的小差异）或半自动的（当数据差异太大时，这说明可能配置错误）。
 
-\####创建复制表
+#### 创建复制表
 
 Replicated的前缀被添加到表引擎名称。例如：ReplicatedMergeTree。 参数列表的开始处还添加了两个参数 - ZooKeeper中的表的路径以及ZooKeeper中的副本名称 Example
 
@@ -536,7 +536,7 @@ ReplicatedMergeTree('/clickhouse/tables/{layer}-{shard}/hits', '{replica}', Even
 
 要删除副本，请运行DROP TABLE。但是，只有一个副本被删除 - 驻留在运行查询的服务器上的副本。
 
-\####Recovery after failures
+#### Recovery after failures
 
 如果ZooKeeper在服务器启动时不可用，则复制表将切换到只读模式。系统会定期尝试连接到ZooKeeper 如果ZooKeeper在INSERT期间不可用，或者在与ZooKeeper交互时发生错误，则会抛出异常。 连接到ZooKeeper后，系统会检查本地文件系统中的数据集是否与预期的数据集（ZooKeeper存储此信息）匹配。如果存在较小的不一致性，则系统通过与副本同步数据来解决这些问题。 如果系统检测到有损坏的数据部分（文件大小错误）或无法识别的部分（部分写入文件系统但未记录在ZooKeeper中），它会将它们移动到“detached”子目录（它们不会被删除）。任何缺少的部分都从副本中复制。 请注意，ClickHouse不会执行任何破坏性操作，例如：自动删除大量数据。 当服务器启动（或者与ZooKeeper建立一个新的会话）时，它只检查所有文件的数量和大小。如果文件大小匹配但字节在中间的某个位置发生了更改，则不会立即检测到这种情况，而只是在尝试读取SELECT查询的数据时才会检测到。该查询将引发有关非匹配校验或者压缩块大小的异常。在这种情况下，数据部分将添加到验证队列中，并在必要时从副本中复制。
 
@@ -544,7 +544,7 @@ ReplicatedMergeTree('/clickhouse/tables/{layer}-{shard}/hits', '{replica}', Even
 
 开始恢复，在zookeeper上使用任何内容创建节点/path_to_table/replica_name/flags/force_restore_data或者运行该命令以恢复所有复制表： sudo -u clickhouse touch /var/lib/clickhouse/flags/force_restore_data 然后重新启动服务器。在开始时，服务器删除这些标志并开始恢复。
 
-\####Recovery after complete data loss
+#### Recovery after complete data loss
 
 如果所有数据和元数据都从其中一台服务器中消失，请按照以下步骤进行恢复： 1、在服务器上安装ClickHouse。如果有需要，则在包含碎片标识符和副本的配置文件中使用正确定义替换。（我理解的就是正确安装ClickHouse和正确的配置，最好就是复制一台正在良好运行的ClickHouse节点然后改配置） 2、如果您有必须在服务器上手动复制的未复制表，请从副本（在目录中）复制其数据， (in the directory /var/lib/clickhouse/data/db_name/table_name/). 3、复制位于/ var / lib / clickhouse / metadata /中副本的表定义。如果在表定义中明确定义了分片或副本标识符，请对其进行更正以使其与此副本相对应。 （或者，启动服务器并进行应该位于/ var / lib / clickhouse / metadata /中的.sql文件中的所有ATTACH TABLE操作。） 4、开始恢复，使用任何内容创建ZooKeeper节点/path_to_table/replica_name/flags/force_restore_data或运行该命令来恢复所有复制表 sudo -u clickhouse touch /var/lib/clickhouse/flags/force_restore_data
 
@@ -552,7 +552,7 @@ ReplicatedMergeTree('/clickhouse/tables/{layer}-{shard}/hits', '{replica}', Even
 
 备用恢复选项是从ZooKeeper（/ path_to_table / replica_name）删除有关已丢失副本的信息，然后再次创建副本，如"Creating replicatable tables".中所述 请注意，如果您要一次恢复多个副本，恢复期间网络带宽没有限制。
 
-\####从MergeTree转换到ReplicatedMergeTree
+#### 从MergeTree转换到ReplicatedMergeTree
 
 我们用MergeTree来代指MergeTree系列中的所有表引擎，与ReplicatedMergeTree相同。
 
