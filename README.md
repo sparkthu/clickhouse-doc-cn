@@ -6,4 +6,5 @@ ClickHouse是俄罗斯yandex公司开源的一款性能强大的列式数据库�
 - [ClickHouse中文文档](https://github.com/sparkthu/clickhouse-doc-cn/blob/master/Reference.md)
 
 维护：sparkthu@gmail.com
+致谢：@hc132提供了引擎部分的内容
 
